@@ -311,7 +311,7 @@ def test(model, queryloader, galleryloader, use_gpu, ranks=[1, 5, 10, 20]):
     g_pids = np.asarray(g_pids)
     g_camids = np.asarray(g_camids)
 
-    if args.dataset == 'mars':
+    if args.dataset == 'mars' or args.dataset == 'lsvid':
         print('process the dataset {}!'.format(args.dataset))
         # gallery set must contain query set, otherwise 140 query imgs will not have ground truth.
         gf = torch.cat((qf, gf), 0)
