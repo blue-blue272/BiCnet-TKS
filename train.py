@@ -145,7 +145,6 @@ def main():
 
     print("Initializing model: {}".format(args.arch))
     model = models.init_model(name=args.arch, num_classes=dataset.num_train_pids)
-    print(model)
     print("Model size: {:.5f}M".format(sum(p.numel() for p in model.parameters())/1000000.0))
 
     criterion_xent = nn.CrossEntropyLoss() 
@@ -214,41 +213,6 @@ def main():
     elapsed = str(datetime.timedelta(seconds=elapsed))
     train_time = str(datetime.timedelta(seconds=train_time))
     print("Finished. Total elapsed time (h:m:s): {}. Training time (h:m:s): {}.".format(elapsed, train_time))
-
-    test_all_frames(model, dataset, spatial_transform_test, use_gpu)
-    print("==========\nArgs:{}\n==========".format(args))
-
-
-def test_all_frames(model, dataset, spatial_transform_test, use_gpu):
-    print("==> Start testing the model")
-    temporal_transform_test = None
-
-    pin_memory = True if use_gpu else False
-
-    queryloader = DataLoader(
-        VideoDataset(dataset.query, spatial_transform=spatial_transform_test, temporal_transform=temporal_transform_test),
-        batch_size=1, shuffle=False, num_workers=0,
-        pin_memory=pin_memory, drop_last=False
-    )
-
-    galleryloader = DataLoader(
-        VideoDataset(dataset.gallery, spatial_transform=spatial_transform_test, temporal_transform=temporal_transform_test),
-        batch_size=1, shuffle=False, num_workers=0,
-        pin_memory=pin_memory, drop_last=False
-    )
-
-    for epoch in [150, 140, 130, 120]:
-        weights = os.path.join(args.save_dir, 'checkpoint_ep'+str(epoch)+'.pth.tar')
-        if not os.path.isfile(weights):
-            continue
-        print("Loading checkpoint from {}".format(weights))
-        checkpoint = torch.load(weights)
-        model.module.load_state_dict(checkpoint['state_dict'])
-
-        model.eval()
-        with torch.no_grad():
-            evaluation(model, args, queryloader, galleryloader, use_gpu)
-
 
 def train(epoch, model, criterion_xent, criterion_htri, optimizer, trainloader, use_gpu):
     batch_xent_loss = AverageMeter()
