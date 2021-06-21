@@ -7,6 +7,7 @@
 ```Shell
 # For MARS
 python train.py -d mars --root your path to MARS --save_dir log-mars #
+python test.py -d mars --root your path to MARS --save_dir log-mars #
   ```
   
 
