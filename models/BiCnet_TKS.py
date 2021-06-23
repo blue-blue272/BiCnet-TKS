@@ -11,6 +11,7 @@ from torch.nn import functional as F
 
 from models import inflate
 from .resnets1 import resnet50_s1
+from .DAO import DAO
 from .TKS import TKS
 
 
@@ -117,6 +118,7 @@ class BiCnet_TKS(nn.Module):
 
         self.layer3 = self._inflate_reslayer(resnet2d.layer3)
         self.layer3_h2l = nn.Conv3d(1024, 1024*3, 1, stride=1, padding=0, bias=False)
+        self.DAO = DAO(in_channel=1024)
 
         self.layer4 = self._inflate_reslayer(resnet2d.layer4)
 
@@ -183,6 +185,8 @@ class BiCnet_TKS(nn.Module):
         x_h2l = x_h2l.contiguous().view(b, 1024, -1, 8, 4)
         xl = xl + x_h2l
 
+        xh, xl, masks = self.DAO(xh, xl)
+
         # layer4
         xh, xl = self.layer4((xh, xl))
 
@@ -201,4 +205,4 @@ class BiCnet_TKS(nn.Module):
         f = self.bn(x)
         y = self.classifier(f)
 
-        return y, f
+        return y, f, masks
