@@ -23,7 +23,7 @@ from video_loader import VideoDataset
 import transforms.spatial_transforms as ST
 import transforms.temporal_transforms as TT
 import models
-from losses import TripletLoss, ContrastiveLoss
+from losses import TripletLoss, DivRegLoss
 from utils import AverageMeter, Logger, save_checkpoint
 from eval_metrics import evaluate
 from samplers import RandomIdentitySampler
@@ -65,6 +65,8 @@ parser.add_argument('--num_instances', type=int, default=4, help="number of inst
 parser.add_argument('-a', '--arch', type=str, default='BiCnet_TKS')
 parser.add_argument('--save-dir', type=str, default='./result/mars/BiCnet_TKS')
 parser.add_argument('--resume', type=str, default='', metavar='PATH')
+# Spatial Attention
+parser.add_argument('--alpha', default=0.01, type=float)
 # Miscs
 parser.add_argument('--seed', type=int, default=1, help="manual seed")
 parser.add_argument('--evaluate', action='store_true', help="evaluation only")
@@ -72,7 +74,7 @@ parser.add_argument('--eval_step', type=int, default=40,
                     help="run evaluation for every N epochs (set to -1 to test after training)")
 parser.add_argument('--start_eval', type=int, default=0, help="start to evaluate after specific epoch")
 parser.add_argument('--use_cpu', action='store_true', help="use cpu")
-parser.add_argument('--gpu_devices', default='2, 3', type=str, help='gpu device ids for CUDA_VISIBLE_DEVICES')
+parser.add_argument('--gpu_devices', default='1, 0', type=str, help='gpu device ids for CUDA_VISIBLE_DEVICES')
 
 args = parser.parse_args()
 
@@ -99,7 +101,6 @@ def main():
     dataset = data_manager.init_dataset(name=args.dataset)
 
     # Data augmentation
-
     spatial_transform_train = ST.Compose([
                 ST.Scale((args.height, args.width), interpolation=3),
                 ST.RandomHorizontalFlip(),
@@ -145,6 +146,7 @@ def main():
 
     print("Initializing model: {}".format(args.arch))
     model = models.init_model(name=args.arch, num_classes=dataset.num_train_pids)
+    print(model)
     print("Model size: {:.5f}M".format(sum(p.numel() for p in model.parameters())/1000000.0))
 
     criterion_xent = nn.CrossEntropyLoss() 
@@ -152,7 +154,9 @@ def main():
         print('process lsvid with contrastive loss!')
         criterion_htri = ContrastiveLoss()
     else:
+        print('process {} with triplet loss!'.format(args.dataset))
         criterion_htri = TripletLoss()
+    criterion_div = DivRegLoss() 
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
@@ -167,11 +171,6 @@ def main():
 
     model = nn.DataParallel(model).cuda()
 
-    if args.evaluate:
-        print("Evaluate only")
-        test_all_frames(model, dataset, spatial_transform_test, use_gpu)
-        return
-
     start_time = time.time()
     train_time = 0
     best_mAP = -np.inf
@@ -181,7 +180,7 @@ def main():
     for epoch in range(start_epoch, args.max_epoch):
 
         start_train_time = time.time()
-        train(epoch, model, criterion_xent, criterion_htri, optimizer, trainloader, use_gpu)
+        train(epoch, model, criterion_xent, criterion_htri, criterion_div, optimizer, trainloader, use_gpu)
         # torch.cuda.empty_cache()
         train_time += round(time.time() - start_train_time)
 
@@ -214,9 +213,11 @@ def main():
     train_time = str(datetime.timedelta(seconds=train_time))
     print("Finished. Total elapsed time (h:m:s): {}. Training time (h:m:s): {}.".format(elapsed, train_time))
 
-def train(epoch, model, criterion_xent, criterion_htri, optimizer, trainloader, use_gpu):
+
+def train(epoch, model, criterion_xent, criterion_htri, criterion_div, optimizer, trainloader, use_gpu):
     batch_xent_loss = AverageMeter()
     batch_htri_loss = AverageMeter()
+    batch_div_loss = AverageMeter()
     batch_loss = AverageMeter()
     batch_corrects = AverageMeter()
     batch_time = AverageMeter()
@@ -236,12 +237,13 @@ def train(epoch, model, criterion_xent, criterion_htri, optimizer, trainloader, 
         optimizer.zero_grad()
 
         # forward
-        outputs, features = model(vids)
+        outputs, features, masks = model(vids)
 
         # combine hard triplet loss with cross entropy loss
         xent_loss = criterion_xent(outputs, pids)
         htri_loss = criterion_htri(features, pids)
-        loss = xent_loss + htri_loss
+        div_loss = criterion_div(masks)
+        loss = xent_loss + htri_loss + args.alpha * div_loss
 
         # backward + optimize
         loss.backward()
@@ -253,6 +255,7 @@ def train(epoch, model, criterion_xent, criterion_htri, optimizer, trainloader, 
         
         batch_xent_loss.update(xent_loss.item(), pids.size(0))
         batch_htri_loss.update(htri_loss.item(), pids.size(0))
+        batch_div_loss.update(div_loss.item(), pids.size(0))
         batch_loss.update(loss.item(), pids.size(0)) 
 
         # measure elapsed time
@@ -265,11 +268,12 @@ def train(epoch, model, criterion_xent, criterion_htri, optimizer, trainloader, 
           'Loss:{loss.avg:.4f} '
           'Xent:{xent.avg:.4f} '
           'Htri:{htri.avg:.4f} '
+          'div_loss:{div_loss.avg:.4f} '
           'Acc:{acc.avg:.2%} '.format(
           epoch+1, batch_time=batch_time,
           data_time=data_time, loss=batch_loss,
           xent=batch_xent_loss, htri=batch_htri_loss,
-          acc=batch_corrects))
+          div_loss=batch_div_loss, acc=batch_corrects))
 
 
 def test(model, queryloader, galleryloader, use_gpu, ranks=[1, 5, 10, 20]):
