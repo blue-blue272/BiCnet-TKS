@@ -4,10 +4,12 @@ from __future__ import print_function
 
 from .mars import Mars
 from .duke import DukeMTMCVidReID
+from .lsvid import LSVID
 
 __vidreid_factory = {
     'mars': Mars,
     'duke': DukeMTMCVidReID,
+    'lsvid': LSVID,
 }
 
 
