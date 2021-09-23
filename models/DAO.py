@@ -54,17 +54,17 @@ class DAO(nn.Module):
         assert (h == self.k)
         assert (w == 1)
 
-        y = self.conv[i](x) #[b,1,t,h,w]
+        y = self.conv[i](x)
         y = y.view(b, t, h * w)
-        y = y.transpose(1, 2).contiguous() #[b, hw, t]
-        s = self.conv1[i](y.unsqueeze(-1).unsqueeze(-1)) #[b, hw, t, 1, 1]
-        s = s.transpose(1, 2).contiguous() #[b, t, hw, 1, 1]
+        y = y.transpose(1, 2).contiguous() 
+        s = self.conv1[i](y.unsqueeze(-1).unsqueeze(-1)) 
+        s = s.transpose(1, 2).contiguous() 
         s = torch.softmax(s, 2)
         a = s.view(b * t, h * w)
 
         x = x.view(b, c, t, -1) 
         s = s.view(b, 1, t, -1)
-        y = (x * s).sum(-1) #[bs, c, t]
+        y = (x * s).sum(-1)
 
         y = self.W[i + 2](y.unsqueeze(-1).unsqueeze(-1))
         return y, a
@@ -78,12 +78,12 @@ class DAO(nn.Module):
 
         x = x.mean(1) #[b, t, h, w]
         x = x.view(b, t, -1)
-        s = torch.softmax(x, -1) #[b, t, hw]
+        s = torch.softmax(x, -1) 
         a = s.view(b * t, h * w)
 
-        y = x_in.view(b, c, t, -1) #[b, c, t, hw]
-        s = s.unsqueeze(1) #[b, 1, t, hw]
-        y = (y * s).sum(-1) #[b, c, t]
+        y = x_in.view(b, c, t, -1) 
+        s = s.unsqueeze(1) 
+        y = (y * s).sum(-1) 
         y = y.unsqueeze(-1).unsqueeze(-1)
         y = self.W[i](y) 
         return y, a
@@ -97,13 +97,13 @@ class DAO(nn.Module):
         b, c, t2, h2, w2 = x2.size()
         x1_in, x2_in = x1, x2
 
-        x1 = self.pool(x1) #[b, c, 2, h, w]
-        x1 = x1.mean(-1, keepdim=True) #[b, c, 2, k, 1]
-        x2 = x2.mean(-1, keepdim=True) #[b, c, 6, k, 1]
+        x1 = self.pool(x1) 
+        x1 = x1.mean(-1, keepdim=True) 
+        x2 = x2.mean(-1, keepdim=True) 
 
-        x2_1 = torch.stack((x2[:, :, 0], x2[:, :, 3]), 2) #[b, c, 2, h, w]
-        x2_2 = torch.stack((x2[:, :, 1], x2[:, :, 4]), 2) #[b, c, 2, h, w]
-        x2_3 = torch.stack((x2[:, :, 2], x2[:, :, 5]), 2) #[b, c, 2, h, w]
+        x2_1 = torch.stack((x2[:, :, 0], x2[:, :, 3]), 2) 
+        x2_2 = torch.stack((x2[:, :, 1], x2[:, :, 4]), 2) 
+        x2_3 = torch.stack((x2[:, :, 2], x2[:, :, 5]), 2) 
 
         y1, a1 = self.forward_avg(x1, 0)
         y2_1, a2_1 = self.forward_avg(x2_1, 1)
